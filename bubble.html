@@ -1,0 +1,615 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bubble Bobble - Live Animated Background Edition</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            user-select: none;
+        }
+
+        body {
+            /* 제공된 레트로 오락실 이미지를 배경으로 지정 */
+            background: url('Gemini_Generated_Image_qrejnjqrejnjqrej (1).png') no-repeat center center fixed;
+            background-size: cover;
+            color: #fff;
+            font-family: 'Courier New', Courier, monospace;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            overflow: hidden;
+            position: relative;
+        }
+
+        /* 오락실 느낌의 어두운 필터 overlay */
+        body::before {
+            content: "";
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(10, 5, 25, 0.4);
+            pointer-events: none;
+            z-index: 1;
+        }
+
+        /* 배경 위 생동감을 주는 움직이는 방울 캔버스 */
+        #bgEffectsCanvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 2;
+            pointer-events: none;
+        }
+
+        .game-wrapper {
+            position: relative;
+            z-index: 10;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background: rgba(15, 8, 38, 0.88);
+            padding: 20px;
+            border-radius: 20px;
+            border: 4px solid #ff00aa;
+            box-shadow: 0 0 35px rgba(255, 0, 170, 0.7), 0 0 70px rgba(0, 229, 255, 0.4);
+            backdrop-filter: blur(6px);
+        }
+
+        .header-ui {
+            width: 100%;
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 12px;
+            font-size: 18px;
+            font-weight: bold;
+            color: #ff77ee;
+            text-shadow: 0 0 8px #ff00aa;
+        }
+
+        .header-ui span {
+            color: #00ffcc;
+            text-shadow: 0 0 8px #00ffcc;
+        }
+
+        canvas#gameCanvas {
+            background: rgba(8, 3, 24, 0.92);
+            border: 3px solid #00e5ff;
+            box-shadow: 0 0 20px rgba(0, 229, 255, 0.5);
+            display: block;
+            border-radius: 6px;
+        }
+
+        .controls-info {
+            margin-top: 12px;
+            font-size: 12px;
+            color: #ffea00;
+            text-align: center;
+            line-height: 1.5;
+            text-shadow: 0 0 6px rgba(255, 234, 0, 0.6);
+        }
+
+        .controls-info span {
+            color: #ffffff;
+        }
+
+        .overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.85);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            border-radius: 8px;
+            display: none;
+            z-index: 20;
+        }
+
+        .overlay h1 {
+            color: #ff007f;
+            font-size: 32px;
+            margin-bottom: 10px;
+            text-shadow: 0 0 10px #ff007f;
+        }
+
+        .overlay button {
+            padding: 10px 20px;
+            font-size: 16px;
+            background: #00ffcc;
+            border: none;
+            color: #000;
+            font-weight: bold;
+            cursor: pointer;
+            border-radius: 5px;
+            box-shadow: 0 0 10px #00ffcc;
+            font-family: inherit;
+        }
+
+        .overlay button:hover {
+            background: #fff;
+            box-shadow: 0 0 15px #fff;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- 배경 움직임 효과 캔버스 -->
+    <canvas id="bgEffectsCanvas"></canvas>
+
+    <div class="game-wrapper">
+        <div class="header-ui">
+            <div>SCORE: <span id="score">000000</span></div>
+            <div>LIVES: <span id="lives">♥♥♥</span></div>
+        </div>
+
+        <div style="position: relative;">
+            <canvas id="gameCanvas" width="500" height="400"></canvas>
+            <div id="gameOverOverlay" class="overlay">
+                <h1>GAME OVER</h1>
+                <button onclick="restartGame()">RESTART</button>
+            </div>
+        </div>
+
+        <div class="controls-info">
+            <p><span>← →</span> : 이동 | <span>W / ↑ / Space</span> : 점프 | <span>J / Z</span> : 방울 발사</p>
+        </div>
+    </div>
+
+    <script>
+        // --- 1. 배경 애니메이션 효과 (떠오르는 비눗방울 & 반짝이는 별) ---
+        const bgCanvas = document.getElementById('bgEffectsCanvas');
+        const bgCtx = bgCanvas.getContext('2d');
+
+        function resizeBgCanvas() {
+            bgCanvas.width = window.innerWidth;
+            bgCanvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resizeBgCanvas);
+        resizeBgCanvas();
+
+        const floatBubbles = Array.from({ length: 35 }, () => ({
+            x: Math.random() * window.innerWidth,
+            y: Math.random() * window.innerHeight,
+            r: 4 + Math.random() * 10,
+            speed: 0.3 + Math.random() * 0.7,
+            swing: Math.random() * Math.PI * 2,
+            color: ['#00ffcc', '#ff00aa', '#ffea00', '#00e5ff', '#ff77ee'][Math.floor(Math.random() * 5)]
+        }));
+
+        const stars = Array.from({ length: 40 }, () => ({
+            x: Math.random() * window.innerWidth,
+            y: Math.random() * window.innerHeight,
+            r: 1 + Math.random() * 2,
+            alpha: Math.random(),
+            speed: 0.02 + Math.random() * 0.03
+        }));
+
+        function drawBgEffects() {
+            bgCtx.clearRect(0, 0, bgCanvas.width, bgCanvas.height);
+
+            // 반짝이는 별 효과
+            stars.forEach(s => {
+                s.alpha += s.speed;
+                if (s.alpha > 1 || s.alpha < 0) s.speed *= -1;
+
+                bgCtx.beginPath();
+                bgCtx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+                bgCtx.fillStyle = `rgba(255, 255, 255, ${Math.abs(s.alpha)})`;
+                bgCtx.fill();
+            });
+
+            // 알록달록 떠오르는 방울 효과
+            floatBubbles.forEach(b => {
+                b.y -= b.speed;
+                b.swing += 0.02;
+                const currentX = b.x + Math.sin(b.swing) * 12;
+
+                if (b.y < -20) {
+                    b.y = bgCanvas.height + 20;
+                    b.x = Math.random() * bgCanvas.width;
+                }
+
+                bgCtx.beginPath();
+                bgCtx.arc(currentX, b.y, b.r, 0, Math.PI * 2);
+                bgCtx.fillStyle = b.color + '44';
+                bgCtx.fill();
+                bgCtx.strokeStyle = b.color;
+                bgCtx.lineWidth = 1.5;
+                bgCtx.stroke();
+            });
+
+            requestAnimationFrame(drawBgEffects);
+        }
+
+        drawBgEffects();
+
+        // --- 2. 게임 메인 로직 ---
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        let score = 0;
+        let lives = 3;
+        let gameOver = false;
+
+        const bgBubbles = Array.from({ length: 10 }, () => ({
+            x: Math.random() * canvas.width,
+            y: Math.random() * canvas.height,
+            r: 3 + Math.random() * 5,
+            speed: 0.2 + Math.random() * 0.4
+        }));
+
+        function drawPlayerSprite(x, y, width, height, facingRight) {
+            ctx.save();
+            if (!facingRight) {
+                ctx.translate(x + width, y);
+                ctx.scale(-1, 1);
+                x = 0;
+                y = 0;
+            }
+
+            ctx.fillStyle = '#10d050';
+            ctx.beginPath();
+            ctx.roundRect(x + 2, y + 4, width - 4, height - 6, 6);
+            ctx.fill();
+
+            ctx.fillStyle = '#ffee44';
+            ctx.beginPath();
+            ctx.roundRect(x + 12, y + 10, 8, 10, 3);
+            ctx.fill();
+
+            ctx.fillStyle = '#ffffff';
+            ctx.beginPath();
+            ctx.arc(x + 16, y + 8, 4, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.fillStyle = '#000000';
+            ctx.beginPath();
+            ctx.arc(x + 17, y + 8, 2, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.fillStyle = '#ff7700';
+            ctx.beginPath();
+            ctx.moveTo(x + 2, y + 8);
+            ctx.lineTo(x - 2, y + 11);
+            ctx.lineTo(x + 2, y + 14);
+            ctx.fill();
+
+            ctx.fillStyle = '#10d050';
+            ctx.beginPath();
+            ctx.moveTo(x + 4, y + 16);
+            ctx.lineTo(x - 3, y + 20);
+            ctx.lineTo(x + 6, y + 22);
+            ctx.fill();
+
+            ctx.fillStyle = '#0db040';
+            ctx.fillRect(x + 4, y + height - 3, 6, 3);
+            ctx.fillRect(x + 14, y + height - 3, 6, 3);
+
+            ctx.restore();
+        }
+
+        const keys = { left: false, right: false, up: false, shoot: false };
+
+        const platforms = [
+            { x: 0, y: 380, width: 500, height: 20 },
+            { x: 50, y: 300, width: 140, height: 12 },
+            { x: 310, y: 300, width: 140, height: 12 },
+            { x: 180, y: 220, width: 140, height: 12 },
+            { x: 50, y: 140, width: 140, height: 12 },
+            { x: 310, y: 140, width: 140, height: 12 }
+        ];
+
+        const player = {
+            x: 50,
+            y: 330,
+            width: 26,
+            height: 26,
+            vx: 0,
+            vy: 0,
+            speed: 3,
+            jumpPower: -8.5,
+            grounded: false,
+            facingRight: true,
+            shootCooldown: 0
+        };
+
+        let bubbles = [];
+        let enemies = [];
+        let items = [];
+
+        function initEnemies() {
+            enemies = [
+                { x: 80, y: 110, width: 22, height: 22, vx: 1.5, trapped: false },
+                { x: 350, y: 110, width: 22, height: 22, vx: -1.5, trapped: false },
+                { x: 220, y: 190, width: 22, height: 22, vx: 1.5, trapped: false },
+                { x: 80, y: 270, width: 22, height: 22, vx: 1.5, trapped: false },
+                { x: 350, y: 270, width: 22, height: 22, vx: -1.5, trapped: false }
+            ];
+        }
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') keys.left = true;
+            if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') keys.right = true;
+            if (e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W' || e.key === ' ') keys.up = true;
+            if (e.key === 'j' || e.key === 'J' || e.key === 'z' || e.key === 'Z') keys.shoot = true;
+        });
+
+        document.addEventListener('keyup', (e) => {
+            if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') keys.left = false;
+            if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') keys.right = false;
+            if (e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W' || e.key === ' ') keys.up = false;
+            if (e.key === 'j' || e.key === 'J' || e.key === 'z' || e.key === 'Z') keys.shoot = false;
+        });
+
+        function update() {
+            if (gameOver) return;
+
+            bgBubbles.forEach(b => {
+                b.y -= b.speed;
+                if (b.y < -10) {
+                    b.y = canvas.height + 10;
+                    b.x = Math.random() * canvas.width;
+                }
+            });
+
+            if (keys.left) {
+                player.vx = -player.speed;
+                player.facingRight = false;
+            } else if (keys.right) {
+                player.vx = player.speed;
+                player.facingRight = true;
+            } else {
+                player.vx = 0;
+            }
+
+            if (keys.up && player.grounded) {
+                player.vy = player.jumpPower;
+                player.grounded = false;
+            }
+
+            player.vy += 0.4;
+            player.x += player.vx;
+            player.y += player.vy;
+
+            if (player.x < 0) player.x = 0;
+            if (player.x + player.width > canvas.width) player.x = canvas.width - player.width;
+
+            player.grounded = false;
+            platforms.forEach(plat => {
+                if (
+                    player.x < plat.x + plat.width &&
+                    player.x + player.width > plat.x &&
+                    player.y + player.height >= plat.y &&
+                    player.y + player.height <= plat.y + plat.height + player.vy &&
+                    player.vy >= 0
+                ) {
+                    player.y = plat.y - player.height;
+                    player.vy = 0;
+                    player.grounded = true;
+                }
+            });
+
+            if (player.shootCooldown > 0) player.shootCooldown--;
+            if (keys.shoot && player.shootCooldown === 0) {
+                bubbles.push({
+                    x: player.facingRight ? player.x + player.width : player.x - 16,
+                    y: player.y + 4,
+                    radius: 10,
+                    vx: player.facingRight ? 5 : -5,
+                    vy: 0,
+                    life: 200,
+                    floating: false
+                });
+                player.shootCooldown = 15;
+            }
+
+            bubbles.forEach((b, index) => {
+                if (!b.floating) {
+                    b.x += b.vx;
+                    b.vx *= 0.92;
+                    if (Math.abs(b.vx) < 0.5) b.floating = true;
+                } else {
+                    b.y -= 0.8;
+                }
+
+                b.life--;
+                if (b.y - b.radius < 0) b.y = b.radius;
+                if (b.life <= 0) bubbles.splice(index, 1);
+            });
+
+            enemies.forEach((enemy, eIdx) => {
+                if (enemy.trapped) {
+                    enemy.y -= 0.6;
+                    if (enemy.y < 10) enemy.y = 10;
+
+                    if (isColliding(player, enemy)) {
+                        score += 500;
+                        updateScore();
+
+                        items.push({
+                            x: enemy.x,
+                            y: enemy.y,
+                            width: 16,
+                            height: 16,
+                            vy: 0
+                        });
+
+                        enemies.splice(eIdx, 1);
+                    }
+                } else {
+                    enemy.x += enemy.vx;
+                    if (enemy.x < 10 || enemy.x + enemy.width > canvas.width - 10) {
+                        enemy.vx *= -1;
+                    }
+
+                    bubbles.forEach((b, bIdx) => {
+                        if (
+                            b.x > enemy.x &&
+                            b.x < enemy.x + enemy.width &&
+                            b.y > enemy.y &&
+                            b.y < enemy.y + enemy.height
+                        ) {
+                            enemy.trapped = true;
+                            bubbles.splice(bIdx, 1);
+                        }
+                    });
+
+                    if (isColliding(player, enemy)) {
+                        lives--;
+                        updateLives();
+                        if (lives <= 0) {
+                            gameOver = true;
+                            document.getElementById('gameOverOverlay').style.display = 'flex';
+                        } else {
+                            player.x = 50;
+                            player.y = 330;
+                        }
+                    }
+                }
+            });
+
+            items.forEach((item, iIdx) => {
+                item.vy += 0.3;
+                item.y += item.vy;
+
+                platforms.forEach(plat => {
+                    if (
+                        item.x < plat.x + plat.width &&
+                        item.x + item.width > plat.x &&
+                        item.y + item.height >= plat.y &&
+                        item.y + item.height <= plat.y + plat.height + item.vy
+                    ) {
+                        item.y = plat.y - item.height;
+                        item.vy = 0;
+                    }
+                });
+
+                if (isColliding(player, item)) {
+                    score += 200;
+                    updateScore();
+                    items.splice(iIdx, 1);
+                }
+            });
+
+            if (enemies.length === 0) {
+                setTimeout(() => {
+                    initEnemies();
+                }, 1000);
+            }
+        }
+
+        function isColliding(rect1, rect2) {
+            return (
+                rect1.x < rect2.x + rect2.width &&
+                rect1.x + rect1.width > rect2.x &&
+                rect1.y < rect2.y + rect2.height &&
+                rect1.y + rect1.height > rect2.y
+            );
+        }
+
+        function draw() {
+            ctx.fillStyle = '#061328';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            bgBubbles.forEach(b => {
+                ctx.beginPath();
+                ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2);
+                ctx.fillStyle = 'rgba(0, 229, 255, 0.3)';
+                ctx.fill();
+            });
+
+            platforms.forEach(plat => {
+                ctx.fillStyle = '#ff00aa';
+                ctx.fillRect(plat.x, plat.y, plat.width, plat.height);
+                ctx.strokeStyle = '#00ffcc';
+                ctx.lineWidth = 1.5;
+                ctx.strokeRect(plat.x, plat.y, plat.width, plat.height);
+            });
+
+            drawPlayerSprite(player.x, player.y, player.width, player.height, player.facingRight);
+
+            bubbles.forEach(b => {
+                ctx.beginPath();
+                ctx.arc(b.x, b.y, b.radius, 0, Math.PI * 2);
+                ctx.fillStyle = 'rgba(0, 229, 255, 0.45)';
+                ctx.fill();
+                ctx.strokeStyle = '#00ffcc';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+            });
+
+            enemies.forEach(enemy => {
+                if (enemy.trapped) {
+                    ctx.beginPath();
+                    ctx.arc(enemy.x + 11, enemy.y + 11, 14, 0, Math.PI * 2);
+                    ctx.fillStyle = 'rgba(255, 0, 127, 0.6)';
+                    ctx.fill();
+                    ctx.strokeStyle = '#ff007f';
+                    ctx.lineWidth = 2;
+                    ctx.stroke();
+
+                    ctx.fillStyle = '#ffea00';
+                    ctx.fillRect(enemy.x + 4, enemy.y + 4, 14, 14);
+                } else {
+                    ctx.fillStyle = '#ff0055';
+                    ctx.fillRect(enemy.x, enemy.y, enemy.width, enemy.height);
+                    ctx.fillStyle = '#fff';
+                    ctx.fillRect(enemy.x + 4, enemy.y + 4, 4, 4);
+                    ctx.fillRect(enemy.x + 14, enemy.y + 4, 4, 4);
+                }
+            });
+
+            items.forEach(item => {
+                ctx.fillStyle = '#ffea00';
+                ctx.beginPath();
+                ctx.arc(item.x + 8, item.y + 8, 7, 0, Math.PI * 2);
+                ctx.fill();
+            });
+        }
+
+        function updateScore() {
+            document.getElementById('score').innerText = String(score).padStart(6, '0');
+        }
+
+        function updateLives() {
+            document.getElementById('lives').innerText = '♥'.repeat(lives);
+        }
+
+        function restartGame() {
+            score = 0;
+            lives = 3;
+            gameOver = false;
+            document.getElementById('gameOverOverlay').style.display = 'none';
+            updateScore();
+            updateLives();
+            player.x = 50;
+            player.y = 330;
+            items = [];
+            bubbles = [];
+            initEnemies();
+        }
+
+        function gameLoop() {
+            update();
+            draw();
+            requestAnimationFrame(gameLoop);
+        }
+
+        initEnemies();
+        gameLoop();
+    </script>
+</body>
+</html>
